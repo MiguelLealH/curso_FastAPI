@@ -1,13 +1,25 @@
 from fastapi import FastAPI, Query, Body, HTTPException, Path
 from pydantic import BaseModel, Field, field_validator, EmailStr
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Literal
 
 app = FastAPI(title="Mini Blog")
 
 BLOG_POST =[
     {"id":1, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
     {"id":2, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
-    {"id":3, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"}
+    {"id":3, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
+    {"id":4, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
+    {"id":5, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
+    {"id":6, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
+    {"id":7, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
+    {"id":8, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
+    {"id":9, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
+    {"id":10, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
+    {"id":11, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
+    {"id":12, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
+    {"id":13, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
+    {"id":14, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
+    {"id":15, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"}
 ]
 
 class Tag(BaseModel):
@@ -95,13 +107,40 @@ def list_posts(query: Optional[str] = Query(
     max_length=50,
     pattern=r"^[\w\sáéíóúÁÉÍÓÚüÜ]+$"
     #pattern=r"^[a-zA-Z]+$" #Solo letras
-    )): 
+    ),
+    #Paginación limit, offset, order_by y direction
+    # Primero limitamos
+    limit: int = Query(
+        10, # Valor por default
+        ge=1,# Valor minimo
+        le=50, # Valor Maximo
+        description="Número de resultados (1-50)"
+    ),
+    # Desde donde vamos a comenzar
+    offset: int = Query(
+        0,
+        ge=0,
+        description="Elementos a saltar antes de empezar la lista"
+    ),
+    #Ordenación 
+    order_by: Literal["id","title"] = Query( # Literal limitas a los valores que esten en la lista
+        "id", description="Campo de orden"
+    ),
+    direction: Literal["asc","desc"] = Query(
+        "asc", description="Dirección de orden"
+    ) 
+    ): 
+    
+    results = BLOG_POST
+    
     #Agregar filtro
     if query:
-        results = [post for post in BLOG_POST if query.lower() in post["title"].lower()]
-        return results
+        results = [post for post in results if query.lower() in post["title"].lower()]
     
-    return BLOG_POST
+    # post:post[order_by] clave de comparación
+    results = sorted(results, key=lambda post:post[order_by], reverse=(direction == "desc"))
+    
+    return results[offset: offset + limit] #[inico:fin]
 
 #endpoint para obtener un post especifico y filtrar content
 # Con Response model
