@@ -87,7 +87,15 @@ def home():
 
 # Utilizando Response Model
 @app.get("/posts", response_model=List[PostPublic])
-def list_posts(query: str | None = Query(default=None, description="Texto para buscar por título")):
+def list_posts(query: Optional[str] = Query(
+    default=None, # EL None del Query significa opcional
+    description="Texto para buscar por título",
+    alias="search", # A nivel publico se ve search pero a nivel codigo es query
+    min_length=3,
+    max_length=50,
+    pattern=r"^[\w\sáéíóúÁÉÍÓÚüÜ]+$"
+    #pattern=r"^[a-zA-Z]+$" #Solo letras
+    )): 
     #Agregar filtro
     if query:
         results = [post for post in BLOG_POST if query.lower() in post["title"].lower()]
