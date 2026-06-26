@@ -22,6 +22,8 @@ BLOG_POST =[
     {"id":15, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"}
 ]
 
+#Cuando heredamos nuestras clases con la clase BaseModel tipifica los datos para que sean ingresados de esa manera obligatoriamente
+
 class Tag(BaseModel):
     name: str = Field(...,min_length=2,max_length=30,description="Nombre de la etiqueta")
     
@@ -87,7 +89,11 @@ class PostSummary(BaseModel):
     id: int
     title: str
     
-
+class PaginatedPost(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    items: List[PostPublic]
 
 #endpoint get para home
 
@@ -98,7 +104,7 @@ def home():
 #endopoint get para obtener todos los post
 
 # Utilizando Response Model
-@app.get("/posts", response_model=List[PostPublic])
+@app.get("/posts", response_model=PaginatedPost)
 def list_posts(query: Optional[str] = Query(
     default=None, # EL None del Query significa opcional
     description="Texto para buscar por título",
@@ -140,7 +146,9 @@ def list_posts(query: Optional[str] = Query(
     # post:post[order_by] clave de comparación
     results = sorted(results, key=lambda post:post[order_by], reverse=(direction == "desc"))
     
-    return results[offset: offset + limit] #[inico:fin]
+    items = results[offset: offset + limit] #[inico:fin] 
+    total = len(items)
+    return PaginatedPost(total=total, limit=limit, offset=offset,items=items) 
 
 #endpoint para obtener un post especifico y filtrar content
 # Con Response model
