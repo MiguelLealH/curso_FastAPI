@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, Body, HTTPException
+from fastapi import FastAPI, Query, Body, HTTPException, Path
 from pydantic import BaseModel, Field, field_validator, EmailStr
 from typing import Optional, List, Union
 
@@ -99,8 +99,20 @@ def list_posts(query: str | None = Query(default=None, description="Texto para b
 # Con Response model
 
 # Union da la facilidad de evaluar ambos modelos  primero OPostPublic  y en caso de que no tenga contenido evalua el segundo 
+#Path ayuda a agregar metadata, validaciones y reglas en los parametros
 @app.get("/posts/{post_id}",response_model=Union[PostPublic,PostSummary], response_description="Post encontrado")
-def get_post(post_id: int, include_content: bool = Query(default=True, description="Incluir o no el contenido")):
+def get_post(post_id: int = Path(
+    ...,
+    #Agregamos primer condicion
+    #ge grader  or equal mayor o igual que
+    #gt grader than mayor
+    #le less or equal
+    #lt less
+    ge=1,
+    title="ID del post",
+    description="Identificador entero del post. Debe ser mayor a 1",
+    example=1
+    ), include_content: bool = Query(default=True, description="Incluir o no el contenido")):
     for post in BLOG_POST:
         if post["id"] == post_id:
             if not include_content:
