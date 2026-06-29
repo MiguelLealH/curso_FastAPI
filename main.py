@@ -1,7 +1,59 @@
+import os
+from datetime import datetime
 from fastapi import FastAPI, Query, Body, HTTPException, Path
 from pydantic import BaseModel, Field, field_validator, EmailStr
 from typing import Optional, List, Union, Literal
 from math import ceil
+from sqlalchemy import create_engine, Integer,String,Text, DateTime
+from sqlalchemy.orm import sessionmaker,Session,DeclarativeBase,Mapped,mapped_column
+
+DATABASE_URL = os.getenv("DATABASE_URL","sqlite:///./blog.db")
+print("Conectado a: ",DATABASE_URL)
+
+engine_kwargs = {}
+if DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+# Creamos conexión a la BD 
+# 1 DATABASE_URL
+# 2 echo=True mostrar el SQL ejecutado en la terminal
+# 3 future=True Indica que se utilizara la sintaxis reciente de SQLAlchemy
+# 4 **engine_kwargs Es decesario para sqlite
+engine = create_engine(DATABASE_URL,echo=True, future=True,**engine_kwargs)
+
+# Creación de la sesion a la BD por cada request
+# autoflush no envia cambios hasta hacer el commit, es decir evitar el autoguardado
+SessionLocal = sessionmaker(bind=engine,autoflush=False,autocommit=False,class_=Session)
+
+class Base(DeclarativeBase):
+    pass
+
+# Calse para representar una tabla
+class PostORM(Base):
+    # Nombre de la tabla
+    __tablename__ = "posts"
+    # Agregar atributos a la tabla
+    # Mapped -> propiedad | mapped_column -> Definir los detalles del atributo
+    id: Mapped[int] = mapped_column(Integer,primary_key=True,index=True)
+    title: Mapped[str] = mapped_column(String(100),nullable=False,index=True)
+    content: Mapped[str] = mapped_column(Text,nullable=False)
+    create_at: Mapped[datetime] = mapped_column(
+        DateTime,default=datetime.utcnow)
+
+# create_all permite crear las tablas en caso de que no existan Solo para el ambiente de dev
+Base.metadata.create_all(bind=engine) 
+
+# Funcion para crear la sesion para cada que se entre a un endpoint
+
+def get_db():
+    # Creamos la sesion
+    db = SessionLocal()
+    try:
+        # Probamos y enviamos la BD , FastAPI inyecta DB a la funcion que depende de esta sesión
+        yield db
+    finally:
+        # Cuando finaliza la pausa del yield cierra la sesión 
+        db.close()
 
 app = FastAPI(title="Mini Blog")
 
