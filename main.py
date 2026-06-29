@@ -8,17 +8,32 @@ app = FastAPI(title="Mini Blog")
 BLOG_POST =[
     {"id":1, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
     {"id":2, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
-    {"id":3, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
+    {"id":3, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones",
+     "tags": [
+         {"name": "Python"},
+         {"name": "fastapi"},
+         {"name": "DJANGO"},
+         ]},
     {"id":4, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
     {"id":5, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
     {"id":6, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
     {"id":7, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
-    {"id":8, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
+    {"id":8, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI",
+     "tags": [
+         {"name": "Python"},
+         {"name": "fastapi"},
+         {"name": "DJANGO"},
+         ]},
     {"id":9, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
     {"id":10, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
     {"id":11, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
     {"id":12, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
-    {"id":13, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
+    {"id":13, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI",
+     "tags": [
+         {"name": "Python"},
+         {"name": "fastapi"},
+         {"name": "DJANGO"},
+         ]},
     {"id":14, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
     {"id":15, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"}
 ]
@@ -28,7 +43,6 @@ BLOG_POST =[
 class Tag(BaseModel):
     name: str = Field(...,min_length=2,max_length=30,description="Nombre de la etiqueta")
     
-
 class Author(BaseModel):
     name: str = Field(
         default="Anónimo",
@@ -100,8 +114,6 @@ class PaginatedPost(BaseModel):
     order_by: Literal["id","title"]
     direction: Literal["asc","desc"]
     search: Optional[str] = None
-    #limit: int
-    #offset: int
     items: List[PostPublic]
 
 #endpoint get para home
@@ -114,7 +126,13 @@ def home():
 
 # Utilizando Response Model
 @app.get("/posts", response_model=PaginatedPost)
-def list_posts(query: Optional[str] = Query(
+def list_posts(
+    text: Optional[str] = Query(
+    default=None,
+    deprecated=True,
+    description="Parametro obsoleto, usa 'query o search' en su lugar",
+    ),
+    query: Optional[str] = Query(
     default=None, # EL None del Query significa opcional
     description="Texto para buscar por título",
     alias="search", # A nivel publico se ve search pero a nivel codigo es query
@@ -147,6 +165,9 @@ def list_posts(query: Optional[str] = Query(
     ): 
     
     results = BLOG_POST
+    
+    #Para el ejercicio igualamos los valores pero no es la forma correcta para el deprecated
+    query = query or text
     
     #Agregar filtro
     if query:
@@ -185,6 +206,22 @@ def list_posts(query: Optional[str] = Query(
         search = query,
         items=items
     )
+
+#endpoint para hacer busqueda dentro de las tags
+@app.get("/posts/by-tags", response_model=List[PostPublic])
+def filter_by_tag(
+    tags: List[str] = Query(
+        ...,
+        min_length= 2,
+        description= "Una o mas etiquetas. Ejemplo: ?tags=python&tags=fastapi"
+    )
+):
+    tags_lower = [tag.lower() for tag in tags]
+    return [
+        #iterar sobre post
+        post for post in BLOG_POST if any(tag["name"].lower() for tag in post.get("tags",[]))
+    ]
+
 
 #endpoint para obtener un post especifico y filtrar content
 # Con Response model
