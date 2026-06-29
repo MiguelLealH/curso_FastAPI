@@ -127,6 +127,11 @@ def home():
 # Utilizando Response Model
 @app.get("/posts", response_model=PaginatedPost)
 def list_posts(
+    text: Optional[str] = Query(
+    default=None,
+    deprecated=True,
+    description="Parametro obsoleto, usa 'query o search' en su lugar",
+    ),
     query: Optional[str] = Query(
     default=None, # EL None del Query significa opcional
     description="Texto para buscar por título",
@@ -160,6 +165,9 @@ def list_posts(
     ): 
     
     results = BLOG_POST
+    
+    #Para el ejercicio igualamos los valores pero no es la forma correcta para el deprecated
+    query = query or text
     
     #Agregar filtro
     if query:
