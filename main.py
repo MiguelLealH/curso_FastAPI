@@ -1,14 +1,29 @@
-from fastapi import FastAPI, Query, Body, HTTPException
+from fastapi import FastAPI, Query, Body, HTTPException, Path
 from pydantic import BaseModel, Field, field_validator, EmailStr
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Literal
+from math import ceil
 
 app = FastAPI(title="Mini Blog")
 
 BLOG_POST =[
     {"id":1, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
     {"id":2, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
-    {"id":3, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"}
+    {"id":3, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
+    {"id":4, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
+    {"id":5, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
+    {"id":6, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
+    {"id":7, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
+    {"id":8, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
+    {"id":9, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
+    {"id":10, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
+    {"id":11, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
+    {"id":12, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
+    {"id":13, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
+    {"id":14, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
+    {"id":15, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"}
 ]
+
+#Cuando heredamos nuestras clases con la clase BaseModel tipifica los datos para que sean ingresados de esa manera obligatoriamente
 
 class Tag(BaseModel):
     name: str = Field(...,min_length=2,max_length=30,description="Nombre de la etiqueta")
@@ -75,7 +90,19 @@ class PostSummary(BaseModel):
     id: int
     title: str
     
-
+class PaginatedPost(BaseModel):
+    page: int
+    per_page: int
+    total: int
+    total_pages: int
+    has_prev: bool
+    has_next: bool
+    order_by: Literal["id","title"]
+    direction: Literal["asc","desc"]
+    search: Optional[str] = None
+    #limit: int
+    #offset: int
+    items: List[PostPublic]
 
 #endpoint get para home
 
@@ -86,21 +113,97 @@ def home():
 #endopoint get para obtener todos los post
 
 # Utilizando Response Model
-@app.get("/posts", response_model=List[PostPublic])
-def list_posts(query: str | None = Query(default=None, description="Texto para buscar por título")):
+@app.get("/posts", response_model=PaginatedPost)
+def list_posts(query: Optional[str] = Query(
+    default=None, # EL None del Query significa opcional
+    description="Texto para buscar por título",
+    alias="search", # A nivel publico se ve search pero a nivel codigo es query
+    min_length=3,
+    max_length=50,
+    pattern=r"^[\w\sáéíóúÁÉÍÓÚüÜ]+$"
+    #pattern=r"^[a-zA-Z]+$" #Solo letras
+    ),
+    #Paginación limit, offset, order_by y direction
+    # Primero limitamos
+    per_page: int = Query(
+        10, # Valor por default
+        ge=1,# Valor minimo
+        le=50, # Valor Maximo
+        description="Número de resultados (1-50)"
+    ),
+    # Desde donde vamos a comenzar
+    page: int = Query(
+        1,
+        ge=1,
+        description="Numero de página (>=1)"
+    ),
+    #Ordenación 
+    order_by: Literal["id","title"] = Query( # Literal limitas a los valores que esten en la lista
+        "id", description="Campo de orden"
+    ),
+    direction: Literal["asc","desc"] = Query(
+        "asc", description="Dirección de orden"
+    ) 
+    ): 
+    
+    results = BLOG_POST
+    
     #Agregar filtro
     if query:
-        results = [post for post in BLOG_POST if query.lower() in post["title"].lower()]
-        return results
+        results = [post for post in results if query.lower() in post["title"].lower()]
     
-    return BLOG_POST
+    # Ordenamos la lista conforme a la clave de comparación Literal["id","title"]
+    # post:post[order_by] clave de comparación
+    results = sorted(results, key=lambda post:post[order_by], reverse=(direction == "desc")) 
+    
+    #Obtenemos el total de posts
+    total = len(results)
+    
+    #Obtenemos el numero total de paginas
+    total_pages = ceil(total/per_page) if total > 0 else 0
+    
+    if total_pages == 0:
+        current_page = 1
+        items=[]
+    else:
+        current_page = min(page, total_pages)
+        start = (current_page -1) * per_page
+        items = results[start: start + per_page] #[inico:fin]
+    
+    has_prev = current_page > 1
+    has_next = current_page < total_pages if total_pages > 0 else False
+    
+    return PaginatedPost(
+        page = current_page,
+        per_page = per_page, 
+        total = total,
+        total_pages = total_pages,
+        has_prev = has_prev,
+        has_next = has_next,
+        order_by = order_by,
+        direction = direction,
+        search = query,
+        items=items
+    )
 
 #endpoint para obtener un post especifico y filtrar content
 # Con Response model
 
 # Union da la facilidad de evaluar ambos modelos  primero OPostPublic  y en caso de que no tenga contenido evalua el segundo 
+#Path ayuda a agregar metadata, validaciones y reglas en los parametros
 @app.get("/posts/{post_id}",response_model=Union[PostPublic,PostSummary], response_description="Post encontrado")
-def get_post(post_id: int, include_content: bool = Query(default=True, description="Incluir o no el contenido")):
+def get_post(post_id: int = Path(
+    ...,
+    #Agregamos primer condicion
+    #ge grader  or equal mayor o igual que
+    #gt grader than mayor
+    #le less or equal
+    #lt less
+    ge=1,
+    title="ID del post",
+    description="Identificador entero del post. Debe ser mayor a 1",
+    example=1
+    ), include_content: bool = Query(default=True, description="Incluir o no el contenido")):
     for post in BLOG_POST:
         if post["id"] == post_id:
             if not include_content:
