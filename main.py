@@ -4,7 +4,7 @@ from fastapi import FastAPI, Query, Body, HTTPException, Path,status,Depends
 from pydantic import BaseModel, Field, field_validator, EmailStr, ConfigDict
 from typing import Optional, List, Union, Literal
 from math import ceil
-from sqlalchemy import create_engine, Integer,String,Text, DateTime
+from sqlalchemy import create_engine, Integer,String,Text, DateTime,select,func
 from sqlalchemy.orm import sessionmaker,Session,DeclarativeBase,Mapped,mapped_column
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -216,35 +216,52 @@ def list_posts(
     ),
     direction: Literal["asc","desc"] = Query(
         "asc", description="Dirección de orden"
-    ) 
+    ),
+    db: Session = Depends(get_db) 
     ): 
     
-    results = BLOG_POST
+    results = select(PostORM)
     
     #Para el ejercicio igualamos los valores pero no es la forma correcta para el deprecated
     query = query or text
     
     #Agregar filtro
     if query:
-        results = [post for post in results if query.lower() in post["title"].lower()]
+        #  ilike es una variante de LIKE que hace la comparación sin importar mayúsculas o minúsculas.
+        results = results.where(PostORM.title.ilike(f"%{query}%"))
     
-    # Ordenamos la lista conforme a la clave de comparación Literal["id","title"]
-    # post:post[order_by] clave de comparación
-    results = sorted(results, key=lambda post:post[order_by], reverse=(direction == "desc")) 
+    # Ordenamos la consulta
+    order_col  = PostORM.id if order_by == "id" else func.lower(PostORM.title)
+    results = results.order_by(
+        order_col.asc() if direction=="asc" else order_col.desc())
     
     #Obtenemos el total de posts
-    total = len(results)
+    total = db.scalar(select(func.count()).select_from(results.subquery())) or 0
     
     #Obtenemos el numero total de paginas
     total_pages = ceil(total/per_page) if total > 0 else 0
     
     if total_pages == 0:
         current_page = 1
-        items=[]
+        items: List[PostORM] = []
     else:
         current_page = min(page, total_pages)
         start = (current_page -1) * per_page
-        items = results[start: start + per_page] #[inico:fin]
+        # 1.- results.limit(5).offset(5) → genera la consulta SQL equivalente a SELECT * FROM posts LIMIT 5 OFFSET 5;:
+        # 2.- db.execute(...) → ejecuta esa consulta en la base de datos.
+        # 3.- .scalars() → extrae los objetos ORM (cada fila convertida en instancia de PostORM).
+        # 4.- .all() → devuelve una lista con esos objetos Ejemplo:.
+        """
+        [
+            PostORM(id=6, title="Validación de datos"),
+            PostORM(id=7, title="Async en FastAPI"),
+            PostORM(id=8, title="Seguridad con JWT"),
+            PostORM(id=9, title="Deploy en Docker"),
+            PostORM(id=10, title="Testing con Pytest")
+        ]
+        """ 
+        items = db.execute(results.limit(
+            per_page).offset(start)).scalars().all()
     
     has_prev = current_page > 1
     has_next = current_page < total_pages if total_pages > 0 else False
