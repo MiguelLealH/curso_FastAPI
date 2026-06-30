@@ -338,7 +338,7 @@ def get_post(post_id: int = Path(
 # Método Post Crea
 
 @app.post("/posts", response_model=PostPublic, response_description="Post creado (OK)", status_code=status.HTTP_201_CREATED)
-def create_post(post: PostCreate, db:Session = Depends(get_db)): 
+def create_post(post: PostCreate, db: Session = Depends(get_db)): 
     new_post = PostORM(title=post.title,content=post.content)
     try:
         # 1 Marcar la insercion
@@ -356,23 +356,34 @@ def create_post(post: PostCreate, db:Session = Depends(get_db)):
 # PUT Actualiza
 
 @app.put("/posts/{post_id}",response_model=PostPublic,response_description="Post actualizado",response_model_exclude_none=True)
-def update_post(post_id: int, data: PostUpdate):
-    for post in BLOG_POST:
-        if post["id"] == post_id:
-            playload = data.model_dump(exclude_unset=True) # Se transforma el objeto en diccionario  {"title": "Hola"}
-            if "title" in playload: 
-                post["title"] = playload["title"]
-                if "content" in playload:
-                    post["content"] = playload["content"]
-                return post
-    raise HTTPException(status_code=404, detail="Post no encontrado")
-
-
-
+def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db)):
+    #Buscar el post_id dentro del modelo y lo almacena en post
+    post_find = select(PostORM).where(PostORM.id == post_id)
+    # Ejecuta la consulta en la base de datos usando la sesión db.
+    post = db.execute(post_find).scalar_one_or_none()
+    
+    if not post:
+        raise HTTPException(status_code=404, detail="Post no encontrado")
+    
+    # Se transforma el objeto en una lista de tuplas  [("title","Hola"),("content","Contenido")] con items()
+    playload = data.model_dump(exclude_unset=True).items() 
+    
+    try:
+        # Actualizamos solo los campos enviados
+        for field, value in playload:
+            setattr(post,field,value)
+            
+        db.commit()
+        db.refresh(post)
+        return PostPublic.model_validate(post, from_attributes=True)
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500,detail="Error al crear el post")
+        
 # DELETE
 
 @app.delete("/posts/{post_id}", status_code=204) # 204 Salio bien pero no regresaremos contenido
-def delete_post(post_id: int):
+def delete_post(post_id: int, db: Session = Depends(get_db)): 
     for index, post in enumerate(BLOG_POST):
         if post["id"] == post_id:
             BLOG_POST.pop(index)
