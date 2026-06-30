@@ -358,9 +358,7 @@ def create_post(post: PostCreate, db: Session = Depends(get_db)):
 @app.put("/posts/{post_id}",response_model=PostPublic,response_description="Post actualizado",response_model_exclude_none=True)
 def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db)):
     #Buscar el post_id dentro del modelo y lo almacena en post
-    post_find = select(PostORM).where(PostORM.id == post_id)
-    # Ejecuta la consulta en la base de datos usando la sesión db.
-    post = db.execute(post_find).scalar_one_or_none()
+    post = db.get(PostORM,post_id)
     
     if not post:
         raise HTTPException(status_code=404, detail="Post no encontrado")
@@ -373,6 +371,7 @@ def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db)):
         for field, value in playload:
             setattr(post,field,value)
             
+        db.add(post)
         db.commit()
         db.refresh(post)
         return PostPublic.model_validate(post, from_attributes=True)
@@ -382,12 +381,10 @@ def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db)):
         
 # DELETE
 
-@app.delete("/posts/{post_id}", status_code=204) # 204 Salio bien pero no regresaremos contenido
+@app.delete("/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT) # 204 Salio bien pero no regresaremos contenido
 def delete_post(post_id: int, db: Session = Depends(get_db)):
     #Buscar el post_id dentro del modelo y lo almacena en post
-    post_find = select(PostORM).where(PostORM.id == post_id)
-    # Ejecuta la consulta en la base de datos usando la sesión db.
-    post = db.execute(post_find).scalar_one_or_none()
+    post = db.get(PostORM,post_id)
     
     if not post:
         raise HTTPException(status_code=404, detail="Post no encontrado")
