@@ -383,9 +383,20 @@ def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db)):
 # DELETE
 
 @app.delete("/posts/{post_id}", status_code=204) # 204 Salio bien pero no regresaremos contenido
-def delete_post(post_id: int, db: Session = Depends(get_db)): 
-    for index, post in enumerate(BLOG_POST):
-        if post["id"] == post_id:
-            BLOG_POST.pop(index)
-            return
-    raise HTTPException(status_code=404,detail="Post no encontrado.")
+def delete_post(post_id: int, db: Session = Depends(get_db)):
+    #Buscar el post_id dentro del modelo y lo almacena en post
+    post_find = select(PostORM).where(PostORM.id == post_id)
+    # Ejecuta la consulta en la base de datos usando la sesión db.
+    post = db.execute(post_find).scalar_one_or_none()
+    
+    if not post:
+        raise HTTPException(status_code=404, detail="Post no encontrado")
+    
+    try:
+        # Eliminamos el elemento
+        db.delete(post)
+        db.commit()
+        return
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500,detail="Error al eliminar el post")
