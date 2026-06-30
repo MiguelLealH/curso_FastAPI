@@ -4,9 +4,9 @@ from fastapi import FastAPI, Query, Body, HTTPException, Path,status,Depends
 from pydantic import BaseModel, Field, field_validator, EmailStr, ConfigDict
 from typing import Optional, List, Union, Literal
 from math import ceil
-from sqlalchemy import create_engine, Integer,String,Text, DateTime,select,func
+from sqlalchemy import create_engine, Integer,String,Text, DateTime,select,func, UniqueConstraint
 from sqlalchemy.orm import sessionmaker,Session,DeclarativeBase,Mapped,mapped_column
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
 DATABASE_URL = os.getenv("DATABASE_URL","sqlite:///./blog.db")
 print("Conectado a: ",DATABASE_URL)
@@ -33,6 +33,7 @@ class Base(DeclarativeBase):
 class PostORM(Base):
     # Nombre de la tabla
     __tablename__ = "posts"
+    __table_args__ = (UniqueConstraint("title",name="unique_post_title"),)
     # Agregar atributos a la tabla
     # Mapped -> propiedad | mapped_column -> Definir los detalles del atributo
     id: Mapped[int] = mapped_column(Integer,primary_key=True,index=True)
@@ -58,40 +59,7 @@ def get_db():
 
 app = FastAPI(title="Mini Blog")
 
-BLOG_POST =[
-    {"id":1, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
-    {"id":2, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
-    {"id":3, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones",
-     "tags": [
-         {"name": "Python"},
-         {"name": "fastapi"},
-         {"name": "DJANGO"},
-         ]},
-    {"id":4, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
-    {"id":5, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
-    {"id":6, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
-    {"id":7, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
-    {"id":8, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI",
-     "tags": [
-         {"name": "Python"},
-         {"name": "fastapi"},
-         {"name": "DJANGO"},
-         ]},
-    {"id":9, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
-    {"id":10, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI"},
-    {"id":11, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
-    {"id":12, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"},
-    {"id":13, "title":"Hola desde FastAPI","content":"Mi primer post con FastAPI",
-     "tags": [
-         {"name": "Python"},
-         {"name": "fastapi"},
-         {"name": "DJANGO"},
-         ]},
-    {"id":14, "title":"Mi segundo Post con FastAPI","content":"Mi segundo post con FastAPI"},
-    {"id":15, "title":"Django vs FastAPI","content":"FastAPI es más rápido que Django por varias razones"}
-]
-
-#Cuando heredamos nuestras clases con la clase BaseModel tipifica los datos para que sean ingresados de esa manera obligatoriamente
+# Cuando heredamos nuestras clases con la clase BaseModel tipifica los datos para que sean ingresados de esa manera obligatoriamente
 
 class Tag(BaseModel):
     name: str = Field(...,min_length=2,max_length=30,description="Nombre de la etiqueta")
@@ -348,6 +316,9 @@ def create_post(post: PostCreate, db: Session = Depends(get_db)):
         # 3 Traer los valores finales como el id y el created_at
         db.refresh(new_post)
         return new_post
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="El título ya existe, prueba con otro")
     except SQLAlchemyError:
         db.rollback()
         raise HTTPException(status_code=500,detail="Error al crear el post")
@@ -377,7 +348,7 @@ def update_post(post_id: int, data: PostUpdate, db: Session = Depends(get_db)):
         return PostPublic.model_validate(post, from_attributes=True)
     except SQLAlchemyError:
         db.rollback()
-        raise HTTPException(status_code=500,detail="Error al crear el post")
+        raise HTTPException(status_code=500,detail="Error al actualizar el post")
         
 # DELETE
 
