@@ -1,11 +1,12 @@
 import os
 from datetime import datetime
-from fastapi import FastAPI, Query, Body, HTTPException, Path
-from pydantic import BaseModel, Field, field_validator, EmailStr
+from fastapi import FastAPI, Query, Body, HTTPException, Path,status,Depends
+from pydantic import BaseModel, Field, field_validator, EmailStr, ConfigDict
 from typing import Optional, List, Union, Literal
 from math import ceil
 from sqlalchemy import create_engine, Integer,String,Text, DateTime
 from sqlalchemy.orm import sessionmaker,Session,DeclarativeBase,Mapped,mapped_column
+from sqlalchemy.exc import SQLAlchemyError
 
 DATABASE_URL = os.getenv("DATABASE_URL","sqlite:///./blog.db")
 print("Conectado a: ",DATABASE_URL)
@@ -151,6 +152,8 @@ class PostPublic(PostBase):
     id: int
     #title: str Se hereda de PostBase
     #content: str Se hereda de PostBase
+    # Esta configuracion sirve para que Pydentic entienda que recibe objeto de SQLAlchemist y lo convierta a JSON 
+    model_config = ConfigDict(from_attributes=True)
     
 class PostSummary(BaseModel):
     id: int
@@ -304,18 +307,20 @@ def get_post(post_id: int = Path(
 
 # Método Post Crea
 
-@app.post("/posts", response_model=PostPublic, response_description="Post creado")
-def create_post(post: PostCreate): 
-    new_id = (BLOG_POST[-1]["id"] + 1) if BLOG_POST else 1
-    
-    new_post = {"id": new_id, 
-                "title": post.title,
-                "content": post.content, 
-                "tags":[tag.model_dump() for tag in post.tags],
-                "author": post.author.model_dump() if post.author else None
-                }
-    BLOG_POST.append(new_post)
-    return new_post
+@app.post("/posts", response_model=PostPublic, response_description="Post creado (OK)", status_code=status.HTTP_201_CREATED)
+def create_post(post: PostCreate, db:Session = Depends(get_db)): 
+    new_post = PostORM(title=post.title,content=post.content)
+    try:
+        # 1 Marcar la insercion
+        db.add(new_post)
+        # 2 Confirmar la inserción con un commit
+        db.commit()
+        # 3 Traer los valores finales como el id y el created_at
+        db.refresh(new_post)
+        return new_post
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500,detail="Error al crear el post")
 
 
 # PUT Actualiza
