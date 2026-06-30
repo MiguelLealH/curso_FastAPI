@@ -158,6 +158,8 @@ class PostPublic(PostBase):
 class PostSummary(BaseModel):
     id: int
     title: str
+    # Para aceptar objetos, tambien se validan postsumary a partir de un objeto
+    model_config = ConfigDict(from_attributes=True)
     
 class PaginatedPost(BaseModel):
     page: int
@@ -300,7 +302,8 @@ def filter_by_tag(
 
 # Union da la facilidad de evaluar ambos modelos  primero OPostPublic  y en caso de que no tenga contenido evalua el segundo 
 #Path ayuda a agregar metadata, validaciones y reglas en los parametros
-@app.get("/posts/{post_id}",response_model=Union[PostPublic,PostSummary], response_description="Post encontrado")
+@app.get("/posts/{post_id}",response_model=Union[PostPublic,PostSummary],
+         response_description="Post encontrado")
 def get_post(post_id: int = Path(
     ...,
     #Agregamos primer condicion
@@ -312,15 +315,25 @@ def get_post(post_id: int = Path(
     title="ID del post",
     description="Identificador entero del post. Debe ser mayor a 1",
     example=1
-    ), include_content: bool = Query(default=True, description="Incluir o no el contenido")):
-    for post in BLOG_POST:
-        if post["id"] == post_id:
-            if not include_content:
-                return {"id": post["id"],"title": post["title"]}
-            return post
-        
-    return HTTPException(status_code=404, detail="Post no encontrado")
-
+    ), include_content: bool = Query(default=True, description="Incluir o no el contenido"),db:Session=Depends(get_db)):
+    
+    #Buscar el post_id dentro del modelo y lo almacena en post
+    # Creamos la consulta SQL que selecciona todos los campos del modelo PostORM y Añade una condición a la consulta: solo traer el registro cuyo id sea igual a post_id
+    # SELECT * FROM posts WHERE id = <post_id>;
+    post_find = select(PostORM).where(PostORM.id == post_id)
+    # Ejecuta la consulta en la base de datos usando la sesión db.
+    # .scalar_one_or_none() Si encuentra exactamente un registro → devuelve ese objeto PostORM.
+    post = db.execute(post_find).scalar_one_or_none()
+    
+    if not post:
+        raise HTTPException(status_code=404, detail="Post no encontrado")
+    
+    if include_content:
+        # .model_validate(post, ...) Su función es validar y convertir los datos que le pasas (post) para que cumplan con el esquema definido en PostPublic.
+        # from_attributes=True Indica que Pydantic debe construir el modelo a partir de atributos de un objeto, no solo de un diccionario.
+        return PostPublic.model_validate(post, from_attributes=True)
+    
+    return PostSummary.model_validate(post,from_attributes=True)
 
 # Método Post Crea
 
