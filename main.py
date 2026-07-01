@@ -118,6 +118,8 @@ app = FastAPI(title="Mini Blog")
 class Tag(BaseModel):
     name: str = Field(...,min_length=2,max_length=30,description="Nombre de la etiqueta")
     
+    model_config = ConfigDict(from_attributes=True)
+    
 class Author(BaseModel):
     name: str = Field(
         default="Anónimo",
@@ -127,12 +129,16 @@ class Author(BaseModel):
     ) 
     
     email: EmailStr
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class PostBase(BaseModel):
     title: str
     content: str
     tags: Optional[List[Tag]] = Field(default_factory=list) #[] por cada objeto que se cree ene l programa
     author: Optional[Author] = None
+    
+    model_config = ConfigDict(from_attributes=True)
 
 class PostCreate(BaseModel):
     title: str = Field(
@@ -154,7 +160,7 @@ class PostCreate(BaseModel):
     
     
     @field_validator("title") # Evalua el campo title
-    @classmethod # Se va a utilizar a la clase completa ayuda a minpular los valores a nivle de clase
+    @classmethod # Se va a utilizar a la clase completa ayuda a minpular los valores a nivel de clase
     def not_allowed_title(cls,value:str) -> str: # -> return
         forbiden_words = ["spam","pinche","puto","pendejo","porno","puta","pendeja"]
         for fw in forbiden_words: 
@@ -361,7 +367,43 @@ def get_post(post_id: int = Path(
 
 @app.post("/posts", response_model=PostPublic, response_description="Post creado (OK)", status_code=status.HTTP_201_CREATED)
 def create_post(post: PostCreate, db: Session = Depends(get_db)): 
-    new_post = PostORM(title=post.title,content=post.content)
+    author_obj = None
+    # post.author sale del atributo author de la clase PostORM
+    if post.author:
+        author_obj = db.execute(
+            select(AuthorORM).where(AuthorORM.email == post.author.email)
+        ).scalar_one_or_none()
+        
+        # Creamos el author sino existe en la BD
+        if not author_obj:
+            author_obj = AuthorORM(
+                name=post.author.name,
+                email=post.author.email)
+            
+            db.add(author_obj)  
+            db.flush() # para asegurar que genere un id en AutorsORM antes de usarlo en Post
+    
+    new_post = PostORM(title=post.title,content=post.content,author=author_obj)
+    
+    # post.tags sale del atributo tags de la clase PostORM
+    for tag in post.tags:
+        tag_obj = db.execute(
+            select(TagORM).where(TagORM.name.ilike(tag.name))
+        ).scalar_one_or_none()
+        
+        if not tag_obj:
+            tag_obj = TagORM(name=tag.name)
+            db.add(tag_obj)
+            db.flush()
+        
+        # Agregamos la etiqueta a la tabla intermedia
+        # Aqui se hace la relación muchos a muchos
+        # 1.- SQLAlchemy no inserta directamente en la tabla tags, sino que:
+        # 2.- Registra en memoria que este PostORM debe estar relacionado con ese TagORM.
+        # 3.- Cuando se hace db.commit(), SQLAlchemy inserta una fila en la tabla intermedia post_tags con los IDs correspondientes:
+        # INSERT INTO post_tags (post_id, tag_id) VALUES (<id del post>, <id del tag>);
+        new_post.tags.append(tag_obj)
+    
     try:
         # 1 Marcar la insercion
         db.add(new_post)
