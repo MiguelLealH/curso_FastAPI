@@ -4,8 +4,8 @@ from fastapi import FastAPI, Query, Body, HTTPException, Path,status,Depends
 from pydantic import BaseModel, Field, field_validator, EmailStr, ConfigDict
 from typing import Optional, List, Union, Literal
 from math import ceil
-from sqlalchemy import create_engine, Integer,String,Text, DateTime,select,func, UniqueConstraint
-from sqlalchemy.orm import sessionmaker,Session,DeclarativeBase,Mapped,mapped_column
+from sqlalchemy import create_engine, Integer,String,Text, DateTime,select,func, UniqueConstraint,ForeignKey,Table,Column
+from sqlalchemy.orm import sessionmaker,Session,DeclarativeBase,Mapped,mapped_column, relationship
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
 DATABASE_URL = os.getenv("DATABASE_URL","sqlite:///./blog.db")
@@ -29,7 +29,44 @@ SessionLocal = sessionmaker(bind=engine,autoflush=False,autocommit=False,class_=
 class Base(DeclarativeBase):
     pass
 
-# Calse para representar una tabla
+# Creamos Tabla intermedia para la relación n:n entre posts y tags
+post_tags = Table(
+    "post_tags", # Nombre de la tabla
+    Base.metadata,
+    # Enlazar con los valores que iran dentro de la tabla, es decir las columnas que tendrá esta tabla
+    Column("post_id", # Nombre de la columna
+           ForeignKey("posts.id",ondelete="CASCADE"), # Foreign Key
+           primary_key=True),
+    Column("tag_id", # Nombre de la columna
+           ForeignKey("tags.id",ondelete="CASCADE"), # Foreign Key
+           primary_key=True)     
+)
+
+
+# Clase para crear la tabla authors
+class AuthorORM(Base):
+    __tablename__ = "authors"
+    id: Mapped[int] = mapped_column(Integer,primary_key=True,index=True)
+    name: Mapped[str] = mapped_column(String(100),nullable=False)
+    email: Mapped[str] = mapped_column(String(100),unique=True,index=True)
+    
+    # Generamos la relación entre tabla posts y autors 1:n
+    # posts: relación ORM que conecta cada autor con la lista de sus posts (objetos PostORM).
+    posts: Mapped[List["PostORM"]] = relationship(
+        back_populates="author")
+
+# Clase para la tabla etiquetas
+class TagORM(Base):
+    __tablename__ = "tags"
+    id: Mapped[int] = mapped_column(Integer,primary_key=True,index=True)
+    name: Mapped[str] = mapped_column(String(100),unique=True,index=True)
+    
+    # Generamos la relación entre tabla posts y tags n:n
+    posts: Mapped[List["PostORM"]] = relationship(
+        secondary=post_tags,
+        back_populates="tags")
+     
+# Clase para representar una tabla del tipo post
 class PostORM(Base):
     # Nombre de la tabla
     __tablename__ = "posts"
@@ -39,8 +76,25 @@ class PostORM(Base):
     id: Mapped[int] = mapped_column(Integer,primary_key=True,index=True)
     title: Mapped[str] = mapped_column(String(100),nullable=False,index=True)
     content: Mapped[str] = mapped_column(Text,nullable=False)
-    create_at: Mapped[datetime] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime,default=datetime.utcnow)
+    
+    # Creamos Foreign Key
+    # Optional[int] → puede ser un número entero o None.
+    # author_id: columna en la tabla posts que guarda el ID del autor (clave foránea).
+    author_id: Mapped[Optional[int]] = mapped_column(ForeignKey("authors.id"))
+   
+    # Crear un atributo de relación de tabla posts con authors
+    # Optional["AuthorORM"] → puede contener un objeto AuthorORM o None.
+    # author: relación ORM que conecta cada post con su autor (objeto AuthorORM).
+    author: Mapped[Optional["AuthorORM"]] = relationship(
+        back_populates="posts")
+    
+    tags: Mapped[List["TagORM"]] = relationship(
+        secondary=post_tags, # Uso y llamada de la tabla intermedia post_tags
+        back_populates="posts",
+        lazy="selectin", # Busqueda la realizara con selectin
+        passive_deletes=True) # Respetar el ondelete en cascada
 
 # create_all permite crear las tablas en caso de que no existan Solo para el ambiente de dev
 Base.metadata.create_all(bind=engine) 
