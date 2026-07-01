@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, field_validator, EmailStr, ConfigDict
 from typing import Optional, List, Union, Literal
 from math import ceil
 from sqlalchemy import create_engine, Integer,String,Text, DateTime,select,func, UniqueConstraint,ForeignKey,Table,Column
-from sqlalchemy.orm import sessionmaker,Session,DeclarativeBase,Mapped,mapped_column, relationship
+from sqlalchemy.orm import sessionmaker,Session,DeclarativeBase,Mapped,mapped_column, relationship, selectinload, joinedload
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 
 DATABASE_URL = os.getenv("DATABASE_URL","sqlite:///./blog.db")
@@ -314,15 +314,31 @@ def list_posts(
 def filter_by_tag(
     tags: List[str] = Query(
         ...,
-        min_length= 2,
+        min_length= 1,
         description= "Una o mas etiquetas. Ejemplo: ?tags=python&tags=fastapi"
-    )
+    ),
+    db: Session = Depends(get_db)
 ):
-    tags_lower = [tag.lower() for tag in tags]
-    return [
-        #iterar sobre post
-        post for post in BLOG_POST if any(tag["name"].lower() for tag in post.get("tags",[]))
-    ]
+    # Normalizar las etiquetas recibidas --Limpia espacios y convierte a minúsculas.
+    normalized_tag_names = [tag.strip().lower() for tag in tags if tag.strip().lower()]
+    
+    if not normalized_tag_names:
+        return []
+    
+    post_list = (
+        select(PostORM).options( # .options() se usa para configurar cómo se cargan las relaciones cuando haces una consulta.
+            selectinload(PostORM.tags), #  carga los tags asociados en una consulta adicional optimizada n:n
+            joinedload(PostORM.author), #  carga el autor en la misma consulta con un JOIN
+        ).where( #Filtra posts que tengan al menos un tag cuyo nombre esté en la lista normalizada.
+            PostORM.tags.any(func.lower(TagORM.name).in_(normalized_tag_names)) # comparación insensible a mayúsculas.
+        ).order_by(PostORM.id.asc())
+    )
+    
+    # .scalars() → devuelve objetos PostORM.
+    # .all() → lista de resultados.
+    posts = db.execute(post_list).scalars().all()
+    
+    return posts
 
 
 #endpoint para obtener un post especifico y filtrar content
