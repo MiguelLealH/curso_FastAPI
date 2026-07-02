@@ -7,9 +7,13 @@ from math import ceil
 from sqlalchemy import create_engine, Integer,String,Text, DateTime,select,func, UniqueConstraint,ForeignKey,Table,Column
 from sqlalchemy.orm import sessionmaker,Session,DeclarativeBase,Mapped,mapped_column, relationship, selectinload, joinedload
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from dotenv import load_dotenv
 
+
+# Buscar el .env
+load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL","sqlite:///./blog.db")
-print("Conectado a: ",DATABASE_URL)
+
 
 engine_kwargs = {}
 if DATABASE_URL.startswith("sqlite"):
@@ -96,7 +100,7 @@ class PostORM(Base):
         lazy="selectin", # Busqueda la realizara con selectin
         passive_deletes=True) # Respetar el ondelete en cascada
 
-# create_all permite crear las tablas en caso de que no existan Solo para el ambiente de dev
+# create_all permite crear las tablas en la BD en caso de que no existan Solo para el ambiente de dev
 Base.metadata.create_all(bind=engine) 
 
 # Funcion para crear la sesion para cada que se entre a un endpoint
